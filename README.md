@@ -243,7 +243,13 @@ docker exec -i clickhouse-badr clickhouse-client --queries-file scripts/ddl/02_c
 
 **Manual (Testing):**
 ```bash
-python scripts/etl/main.py
+python dags/jobs/jobs_etl.py \
+  --source_type mysql --source_host 10.10.0.30 --source_port 3306 \
+  --source_user devel --source_password recruitment2024 \
+  --source_db recruitment_dev \
+  --target_type clickhouse --target_host localhost --target_port 8123 \
+  --target_user default --target_password "" \
+  --target_db datamart_badr_interactive
 ```
 
 ### 6. Configure Superset
@@ -314,12 +320,10 @@ RUN pip install --no-cache-dir \
 ### Required Directories
 ```bash
 # Windows
-mkdir airflow\dags airflow\logs airflow\config airflow\plugins
-mkdir spark\jobs spark\data
+mkdir dags\jobs\scripts
 
 # Linux/Mac
-mkdir -p airflow/dags airflow/logs airflow/config airflow/plugins
-mkdir -p spark/jobs spark/data
+mkdir -p dags/jobs/scripts
 ```
 
 ---
@@ -357,11 +361,13 @@ requirement-badr_interactive/
 ├── requirements.txt            # Python deps
 ├── .env.example                # Env template
 │
-├── airflow/dags/               # Airflow DAGs
-│   └── stock_etl_pipeline.py   # Main ETL DAG
-│
-├── spark/jobs/                 # PySpark transform jobs
-│   └── transform_stock.py      # Stock data transformation
+├── dags/
+│   ├── dags_etl.py             # Airflow DAG definition
+│   └── jobs/
+│       ├── jobs_etl.py         # Main ETL script (PySpark)
+│       └── scripts/
+│           ├── helpers.py      # JDBC helpers
+│           └── methods.py      # ETL methods
 │
 ├── scripts/
 │   ├── ddl/                    # ClickHouse DDL scripts

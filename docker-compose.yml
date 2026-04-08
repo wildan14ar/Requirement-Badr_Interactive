@@ -33,10 +33,10 @@ x-airflow-common: &airflow-common
     SOURCE_DB_USER: devel
     SOURCE_DB_PASS: recruitment2024
   volumes:
-    - ./airflow/dags:/opt/airflow/dags
-    - ./airflow/logs:/opt/airflow/logs
-    - ./airflow/config:/opt/airflow/config
-    - ./airflow/plugins:/opt/airflow/plugins
+    - ./dags:/opt/airflow/dags
+    - ./dags/logs:/opt/airflow/logs
+    - ./dags/config:/opt/airflow/config
+    - ./dags/plugins:/opt/airflow/plugins
     - ./scripts:/opt/airflow/scripts
   user: "${AIRFLOW_UID:-50000}:0"
   networks:
