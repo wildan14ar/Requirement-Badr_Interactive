@@ -1,0 +1,13 @@
+# ===============================
+# Database Connectors
+# ===============================
+sqlalchemy
+psycopg2-binary
+pymysql
+mysqlclient
+pyodbc
+
+# ===============================
+# Object Storage
+# ===============================
+minio

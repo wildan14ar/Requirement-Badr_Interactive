@@ -1,0 +1,10 @@
+# ===============================
+# Airflow Provider Packages
+# ===============================
+airflow-code-editor
+apache-airflow-providers-git
+apache-airflow-providers-ssh
+apache-airflow-providers-apache-spark
+apache-airflow-providers-jdbc
+apache-airflow-providers-postgres
+pyspark==4.1.0
