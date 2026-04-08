@@ -1,0 +1,40 @@
+# Python Dependencies for ETL Pipeline
+# Install with: pip install -r requirements.txt
+
+# =====================================================
+# Database connectivity
+# =====================================================
+
+# Source Database (MySQL)
+pymysql==1.1.0
+cryptography==42.0.0
+SQLAlchemy==2.0.25
+
+# Data Mart Database (ClickHouse)
+clickhouse-driver==0.2.6
+clickhouse-connect==0.7.0
+sqlalchemy-clickhouse==0.3.2
+
+# =====================================================
+# Data processing
+# =====================================================
+pandas==2.2.0
+numpy==1.26.3
+pyarrow==15.0.0  # For efficient data serialization
+
+# =====================================================
+# Environment variables
+# =====================================================
+python-dotenv==1.0.1
+
+# =====================================================
+# Testing (optional)
+# =====================================================
+pytest==7.4.4
+pytest-cov==4.1.0
+
+# =====================================================
+# Logging and utilities
+# =====================================================
+python-dateutil==2.8.2
+tqdm==4.66.1  # Progress bars for ETL

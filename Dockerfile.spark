@@ -1,0 +1,57 @@
+# ===============================
+# Base image: Apache Spark Official
+# ===============================
+FROM apache/spark:4.1.0-python3
+
+# User root for installation
+USER root
+
+# ===============================
+# OS dependencies (minimal)
+# ===============================
+# Add deadsnakes PPA for Python 3.12 if not available in default repos
+RUN apt-get update && apt-get install -y \
+    software-properties-common \
+    && add-apt-repository ppa:deadsnakes/ppa \
+    && apt-get update && apt-get install -y \
+    python3.12 \
+    python3.12-dev \
+    python3.12-venv \
+    curl \
+    wget \
+    ca-certificates \
+    libpq-dev \
+    postgresql-client \
+    pkg-config \
+    libmariadb-dev \
+    unixodbc-dev \
+    && rm -rf /var/lib/apt/lists/*
+
+
+# Install pip for Python 3.12
+RUN curl -sS https://bootstrap.pypa.io/get-pip.py | python3.12 \
+    && ln -sf /usr/bin/python3.12 /usr/bin/python3 \
+    && ln -sf /usr/bin/python3.12 /usr/bin/python \
+    && ln -sf /usr/local/bin/pip3.12 /usr/local/bin/pip3
+
+# ===============================
+# Install pip and Python dependencies
+# ===============================
+COPY dags/requirements-spark.txt /requirements.txt
+RUN python3 -m pip install --no-cache-dir --upgrade pip \
+    && python3 -m pip install --no-cache-dir -r /requirements.txt
+
+# ===============================
+# Environment Variables
+# ===============================
+ENV PYSPARK_PYTHON=python3
+ENV PYSPARK_DRIVER_PYTHON=python3
+
+
+# User spark
+USER spark
+
+# ===============================
+# Set working directory
+# ===============================
+WORKDIR /opt/spark
