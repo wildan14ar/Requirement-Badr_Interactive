@@ -1,247 +1,137 @@
-# Badr Interactive - Data Engineering Recruitment
+# Laporan Rekrutmen Data Engineer
+## Badr Interactive
 
-## 📋 Project Overview
+Repositori GitHub: [https://github.com/wildan14ar/Requirement-Badr_Interactive](https://github.com/wildan14ar/Requirement-Badr_Interactive)
 
-Data pipeline untuk dashboard stok logistik kesehatan Indonesia (Dinkes Provinsi, Kabupaten/Kota, Puskesmas).
+## Daftar Isi
+- [Ringkasan Eksekutif](#ringkasan-eksekutif)
+- [BAB I. Pendahuluan](#bab-i-pendahuluan)
+  - [1.1 Latar Belakang](#11-latar-belakang)
+  - [1.2 Tujuan](#12-tujuan)
+  - [1.3 Ruang Lingkup](#13-ruang-lingkup)
+- [BAB II. Arsitektur Solusi](#bab-ii-arsitektur-solusi)
+  - [2.1 Arsitektur Tingkat Tinggi](#21-arsitektur-tingkat-tinggi)
+  - [2.2 Komponen Sistem](#22-komponen-sistem)
+  - [2.3 Alur Data](#23-alur-data)
+- [BAB III. Dokumentasi ETL](#bab-iii-dokumentasi-etl)
+  - [3.1 Sumber Data](#31-sumber-data)
+  - [3.2 Proses Extract](#32-proses-extract)
+  - [3.3 Proses Transform](#33-proses-transform)
+  - [3.4 Proses Load](#34-proses-load)
+  - [3.5 Implementasi](#35-implementasi)
+- [BAB IV. Desain Datamart OLAP](#bab-iv-desain-datamart-olap)
+  - [4.1 Model Data](#41-model-data)
+  - [4.2 Tabel Dimensi](#42-tabel-dimensi)
+  - [4.3 Tabel Bridge](#43-tabel-bridge)
+  - [4.4 Tabel Fakta](#44-tabel-fakta)
+- [BAB V. Query SQL Dashboard](#bab-v-query-sql-dashboard)
+  - [5.1 Query Jumlah Stok](#51-query-jumlah-stok)
+  - [5.2 Query Stok per Tag Entitas](#52-query-stok-per-tag-entitas)
+  - [5.3 Query Stok per Material](#53-query-stok-per-material)
+  - [5.4 Query Filter](#54-query-filter)
+- [Penutup](#penutup)
 
-### 🎯 Objectives
+## Ringkasan Eksekutif
+Dokumen ini merangkum rancangan end-to-end untuk membangun dashboard stok logistik kesehatan Indonesia. Solusi yang diusulkan memindahkan data operasional dari MySQL ke datamart OLAP ClickHouse melalui pipeline ETL berbasis PySpark dan Airflow.
 
-1. **ETL Pipeline** - Extract, transform, load dari MySQL ke ClickHouse
-2. **Data Mart** - Star schema untuk analisis OLAP
-3. **Dashboard** - Visualisasi stok di Superset
+Hasil akhir dirancang agar dashboard dapat menampilkan jumlah stok, stok per tag entitas, dan stok per material dengan cepat, konsisten, serta mudah dipelihara.
 
-### 🛠️ Tech Stack
+## BAB I. Pendahuluan
 
-| Component | Technology |
-|-----------|-----------|
-| **Source DB** | MySQL (recruitment_dev @ 10.10.0.30) |
-| **Data Mart** | ClickHouse (Columnar OLAP) |
-| **Orchestrator** | Apache Airflow |
-| **Transform** | Apache Spark (PySpark) |
-| **Dashboard** | Apache Superset |
-| **Deploy** | Docker Compose |
+### 1.1 Latar Belakang
+Sistem logistik kesehatan digunakan oleh fasilitas kesehatan di Indonesia mulai dari Dinas Kesehatan Provinsi, Dinas Kesehatan Kabupaten/Kota, hingga Puskesmas. Sistem ini menyimpan data stok material seperti vaksin dan non-vaksin yang perlu disajikan dalam dashboard analitik.
 
----
+### 1.2 Tujuan
+Tujuan dokumen ini adalah menjelaskan rancangan ETL, desain datamart OLAP, dan query SQL yang mendukung dashboard stok sesuai kebutuhan bisnis.
 
-## 🏗️ Architecture
+### 1.3 Ruang Lingkup
+Ruang lingkup solusi ini adalah:
+- Fokus pada `Sisa Stok`.
+- Mengabaikan `Tanggal Kadaluarsa`.
+- Mengabaikan `Stok Belum Diterima`.
+- Mendukung filter tanggal, kegiatan, jenis material, nama material, tag entitas, dan lokasi.
 
-### High-Level Data Flow
+## BAB II. Arsitektur Solusi
 
-```
-MySQL (Source) → Airflow (Scheduler) → Spark (Transform) → ClickHouse (OLAP) → Superset (Dashboard)
-  :3306              :8081                 :8082               :8123/:9000          :8088
-```
+### 2.1 Arsitektur Tingkat Tinggi
+```mermaid
+flowchart LR
+    A[MySQL<br/>recruitment_dev] --> B[Airflow DAG]
+    B --> C[PySpark ETL]
+    C --> D[ClickHouse Datamart]
+    D --> E[Superset Dashboard]
 
-### Architecture Diagram
-
-```plantuml
-@startuml architecture
-
-skinparam backgroundColor #1E1E2E
-skinparam defaultFontName Segoe UI
-skinparam shadowing false
-skinparam roundCorner 10
-
-rectangle "Source Database\n(OLTP - MySQL)" as mysql <<OLTP>> #2E86AB
-rectangle "Apache Airflow\n(Orchestrator)" as airflow <<SCHEDULER>> #A23B72
-rectangle "Apache Spark\n(Transform Engine)" as spark <<PROCESSING>> #F18F01
-rectangle "ClickHouse\n(OLAP Data Mart)" as clickhouse <<STORAGE>> #C73E1D
-rectangle "Apache Superset\n(BI Dashboard)" as superset <<VISUALIZATION>> #3B1F2B
-
-database "PostgreSQL" as postgres <<METADATA>> #555555
-database "Redis" as redis <<CACHE>> #555555
-
-mysql -right-> airflow : Extract (PyMySQL)\n4x/day
-airflow -right-> spark : Trigger Job\n(PythonOperator)
-spark -right-> clickhouse : Load Data\n(JDBC Writer)
-clickhouse -right-> superset : SQL Query\n(Visualization)
-
-postgres -up-> airflow : Metadata\n(DAGs, Runs, Logs)
-redis -down-> airflow : Celery Broker\n& Cache
-redis -down-> superset : Query Cache
-
-note bottom of mysql
-  <b>Source System</b>
-  • stocks, batches
-  • master_materials
-  • entities, tags
-  • provinces/regencies
-  
-  Host: 10.10.0.30:3306
-  DB: recruitment_dev
-end note
-
-note bottom of airflow
-  <b>Orchestration Layer</b>
-  • Schedule DAGs (4x/day)
-  • Monitor execution
-  • Retry on failure
-  • Data quality checks
-  
-  Port: 8081
-end note
-
-note bottom of spark
-  <b>Transform Layer</b>
-  • Extract from MySQL
-  • Clean & validate data
-  • Join tables
-  • Create dimensions & facts
-  • Write to ClickHouse
-  
-  Port: 8082 (UI)
-end note
-
-note bottom of clickhouse
-  <b>Storage Layer</b>
-  • Star Schema
-  • Columnar storage
-  • 10-100x faster queries
-  • Excellent compression
-  
-  Ports: 8123 (HTTP), 9000 (Native)
-end note
-
-note bottom of superset
-  <b>Visualization Layer</b>
-  • Total Stock card
-  • Stock by Entity Tag
-  • Stock by Material
-  • Interactive filters
-  
-  Port: 8088
-end note
-
-@enduml
+    A --- A1[Stocks<br/>Materials<br/>Entities<br/>Locations]
+    C --- C1[Transform<br/>Normalize<br/>Bridge Tables<br/>Fact Snapshot]
+    D --- D1[Star Schema<br/>Fast Aggregation]
+    E --- E1[Cards<br/>Bar Charts<br/>Filters]
 ```
 
-### Data Mart Schema (Star Schema)
+### 2.2 Komponen Sistem
+| Komponen | Peran |
+|---|---|
+| MySQL `recruitment_dev` | Sumber data operasional |
+| Airflow | Orkestrasi dan penjadwalan pipeline |
+| PySpark | Ekstraksi, transformasi, dan pemuatan data |
+| ClickHouse | Datamart OLAP dan agregasi cepat |
+| Superset | Dashboard dan eksplorasi visual |
 
-```plantuml
-@startuml schema
+### 2.3 Alur Data
+Alur data mengikuti pola berikut:
+1. Data dibaca dari tabel sumber MySQL.
+2. Data dibersihkan dan dinormalisasi menggunakan PySpark.
+3. Data dimuat ke struktur OLAP berbasis star schema di ClickHouse.
+4. Dashboard membaca data langsung dari datamart.
 
-skinparam backgroundColor #1E1E2E
-skinparam defaultFontName Segoe UI
-skinparam roundCorner 8
+## BAB III. Dokumentasi ETL
 
-entity "dim_date" as dim_date {
-  * date_key : INT PK
-  full_date : DATE
-  year : INT
-  month : INT
-}
+### 3.1 Sumber Data
+Tabel source yang digunakan:
+- `stocks`
+- `batches`
+- `entity_has_master_materials`
+- `entities`
+- `master_materials`
+- `master_activities`
+- `entity_tags`
+- `entity_entity_tags`
+- `entity_activity_date`
+- `provinces`
+- `regencies`
 
-entity "dim_material" as dim_material {
-  * material_key : INT PK
-  material_id : INT
-  material_name : VARCHAR(255)
-  category : VARCHAR(50)
-  is_vaccine : BOOLEAN
-}
+### 3.2 Proses Extract
+Proses extract mengambil data dari MySQL `recruitment_dev` melalui JDBC. Data utama yang dibutuhkan adalah stok, master material, master aktivitas, entitas, tag entitas, dan wilayah.
 
-entity "dim_entity" as dim_entity {
-  * entity_key : INT PK
-  entity_id : INT
-  entity_name : VARCHAR(255)
-  entity_type : VARCHAR(100)
-  province_id : VARCHAR(255)
-  regency_id : VARCHAR(255)
-}
+### 3.3 Proses Transform
+Aturan transformasi yang diterapkan:
+- Material dipetakan menjadi `Vaccine` atau `Non-Vaccine`.
+- `entities.type` dipetakan ke label bisnis seperti Dinas Kesehatan, Puskesmas, Rumah Sakit, dan lain-lain.
+- `stocks.createdAt` diubah menjadi `stock_date` dan `date_key`.
+- Relasi many-to-many dibentuk menjadi bridge table:
+  - `bridge_entity_tag`
+  - `bridge_entity_activity`
+- Data soft-deleted diabaikan jika kolom `deleted_at` tersedia.
 
-entity "dim_location" as dim_location {
-  * location_key : INT PK
-  province_name : VARCHAR(255)
-  regency_name : VARCHAR(255)
-}
+### 3.4 Proses Load
+Urutan load ke datamart:
+1. `dim_date`
+2. `dim_location`
+3. `dim_material`
+4. `dim_entity`
+5. `dim_activity`
+6. `dim_entity_tag`
+7. `bridge_entity_tag`
+8. `bridge_entity_activity`
+9. `fact_stock_snapshot`
 
-entity "dim_entity_tag" as dim_entity_tag {
-  * tag_key : INT PK
-  tag_name : VARCHAR(255)
-  tag_category : VARCHAR(100)
-}
+### 3.5 Implementasi
+File utama implementasi ETL:
+- [dags/jobs/jobs_etl.py](dags/jobs/jobs_etl.py)
 
-entity "fact_stock" as fact_stock #FF6B6B {
-  * stock_key : BIGINT PK
-  material_key : INT FK
-  entity_key : INT FK
-  date_key : INT FK
-  tag_key : INT FK
-  location_key : INT FK
-  stock_quantity : DECIMAL(15,2)
-}
+DDL datamart:
+- [scripts/ddl/create_datamart_clickhouse.sql](scripts/ddl/create_datamart_clickhouse.sql)
 
-dim_date ||--o{ fact_stock : date_key
-dim_material ||--o{ fact_stock : material_key
-dim_entity ||--o{ fact_stock : entity_key
-dim_location ||--o{ fact_stock : location_key
-dim_entity_tag ||--o{ fact_stock : tag_key
-
-@enduml
-```
-
-### Dimension Tables
-
-| Table | Purpose | Source |
-|-------|---------|--------|
-| `dim_date` | Time analysis (year, month, day) | Generated (2020-2030) |
-| `dim_material` | Vaccine/Non-vaccine items | master_materials |
-| `dim_entity` | Healthcare facilities | entities |
-| `dim_location` | Province → Regency hierarchy | provinces + regencies |
-| `dim_activity` | Program/activity types | master_activities |
-| `dim_entity_tag` | Entity classification (Puskesmas, Dinkes) | entity_tags |
-
-### Fact Table
-
-| Table | Purpose | Grain |
-|-------|---------|-------|
-| `fact_stock` | Stock quantities with dimension FKs | One row per stock record per batch per entity per day |
-
-**Key Columns:**
-- `stock_quantity` - Main metric (remaining stock)
-- `allocated`, `in_transit` - Additional stock metrics
-- `material_key`, `entity_key`, `date_key` - Required FKs
-- `tag_key`, `location_key`, `activity_key` - Optional FKs
-
----
-
-## 🚀 Quick Start
-
-### 1. Prerequisites
-- **OpenVPN** (connect ke: user=`recruitment`, pass=`564738`)
-- **Docker Desktop** installed & running
-- **Python 3.9+**
-
-### 2. Start Services
-```bash
-# Copy & edit env
-copy .env.example .env    # Windows
-cp .env.example .env      # Linux/Mac
-
-# Start all services
-docker compose up -d
-```
-
-### 3. Access UIs
-| Service | URL | Credentials |
-|---------|-----|-------------|
-| **Airflow** | http://localhost:8081 | airflow / airflow |
-| **Spark UI** | http://localhost:8082 | No auth |
-| **Superset** | http://localhost:8088 | admin / admin |
-
-### 4. Initialize Data Mart
-```bash
-# Run DDL scripts in ClickHouse
-docker exec -i clickhouse-badr clickhouse-client --queries-file scripts/ddl/01_create_dimensions_ch.sql
-docker exec -i clickhouse-badr clickhouse-client --queries-file scripts/ddl/02_create_fact_table_ch.sql
-```
-
-### 5. Run ETL Pipeline
-**Via Airflow UI:**
-1. Go to http://localhost:8081
-2. Find DAG: `stock_etl_pipeline`
-3. Click "Trigger DAG"
-
-**Manual (Testing):**
+Contoh perintah menjalankan ETL manual:
 ```bash
 python dags/jobs/jobs_etl.py \
   --source_type mysql --source_host 10.10.0.30 --source_port 3306 \
@@ -252,323 +142,133 @@ python dags/jobs/jobs_etl.py \
   --target_db datamart_badr_interactive
 ```
 
-### 6. Configure Superset
-1. **Add ClickHouse:**
-   - Settings → Database Connections → + Database
-   - SQLAlchemy URI: `clickhouse://default:@localhost:8123/datamart_badr_interactive`
+## BAB IV. Desain Datamart OLAP
 
-2. **Create Charts:**
-   - See [Dashboard Charts](#-dashboard-charts) section below
+### 4.1 Model Data
+Datamart menggunakan star schema dengan bridge table untuk relasi many-to-many.
 
----
-
-## 🔄 ETL Pipeline
-
-### Airflow DAG Schedule
-
-| Task | Frequency | Time |
-|------|-----------|------|
-| Stock ETL | 4x/day | 00:00, 06:00, 12:00, 18:00 |
-| Master Data Sync | 1x/day | 01:00 |
-
-### ETL Process Flow
-
-```
-┌─────────────────────────────────────────────────────────────┐
-│                  Extract Phase (extract.py)                  │
-│  • Connect to MySQL (recruitment_dev)                       │
-│  • Query: stocks, batches, materials, entities, etc.        │
-│  • Filter: deleted_at IS NULL                               │
-│  • Load to Pandas DataFrames                                │
-└──────────────────┬──────────────────────────────────────────┘
-                   ▼
-┌─────────────────────────────────────────────────────────────┐
-│               Transform Phase (transform.py)                 │
-│  • Clean & standardize data                                 │
-│  • Join tables (stocks + batches + entities + materials)    │
-│  • Create derived fields (category, entity_type)            │
-│  • Map source IDs to business keys                          │
-└──────────────────┬──────────────────────────────────────────┘
-                   ▼
-┌─────────────────────────────────────────────────────────────┐
-│                  Load Phase (load.py)                        │
-│  • Connect to ClickHouse                                    │
-│  • Load dimension tables (upsert logic)                     │
-│  • Map surrogate keys for fact table                        │
-│  • Load fact_stock with batch inserts                       │
-│  • Validate loaded data                                     │
-└─────────────────────────────────────────────────────────────┘
+```mermaid
+erDiagram
+    DIM_DATE ||--o{ FACT_STOCK_SNAPSHOT : date_key
+    DIM_MATERIAL ||--o{ FACT_STOCK_SNAPSHOT : material_id
+    DIM_ENTITY ||--o{ FACT_STOCK_SNAPSHOT : entity_id
+    DIM_ACTIVITY ||--o{ FACT_STOCK_SNAPSHOT : activity_id
+    DIM_LOCATION ||--o{ DIM_ENTITY : location
+    DIM_ENTITY ||--o{ BRIDGE_ENTITY_TAG : entity_id
+    DIM_ENTITY_TAG ||--o{ BRIDGE_ENTITY_TAG : tag_id
+    DIM_ENTITY ||--o{ BRIDGE_ENTITY_ACTIVITY : entity_id
+    DIM_ACTIVITY ||--o{ BRIDGE_ENTITY_ACTIVITY : activity_id
 ```
 
-### Dockerfile.airflow
+### 4.2 Tabel Dimensi
+- `dim_date`: satu baris per tanggal.
+- `dim_location`: satu baris per pasangan provinsi dan kabupaten/kota.
+- `dim_material`: satu baris per material.
+- `dim_entity`: satu baris per fasilitas kesehatan.
+- `dim_activity`: satu baris per kegiatan.
+- `dim_entity_tag`: satu baris per tag entitas.
 
-```dockerfile
-FROM apache/airflow:3.0.6
+### 4.3 Tabel Bridge
+- `bridge_entity_tag`: mapping entitas ke tag.
+- `bridge_entity_activity`: mapping entitas ke kegiatan.
 
-USER root
-RUN apt-get update && \
-    apt-get install -y --no-install-recommends default-jre-headless && \
-    apt-get clean && rm -rf /var/lib/apt/lists/*
+### 4.4 Tabel Fakta
+- `fact_stock_snapshot`: satu baris per record stok sumber.
+- Metric utama: `stock_quantity`.
+- Foreign key analitik: `date_key`, `entity_id`, `material_id`, `activity_id`.
 
-USER airflow
-RUN pip install --no-cache-dir \
-    clickhouse-driver==0.2.6 clickhouse-connect==0.7.0 \
-    pymysql==1.1.0 pandas==2.2.0 numpy==1.26.3 pyspark==3.5.0 \
-    python-dotenv==1.0.1 tqdm==4.66.1
-```
+## BAB V. Query SQL Dashboard
 
-### Required Directories
-```bash
-# Windows
-mkdir dags\jobs\scripts
-
-# Linux/Mac
-mkdir -p dags/jobs/scripts
-```
-
----
-
-## 💾 Database Configuration
-
-### Source Database (OLTP - MySQL)
-| Parameter | Value |
-|-----------|-------|
-| Host | `10.10.0.30` |
-| Port | `3306` |
-| Database | `recruitment_dev` |
-| Username | `devel` |
-| Password | `recruitment2024` |
-| Access | VPN required |
-
-### Data Mart Database (OLAP - ClickHouse)
-| Parameter | Value |
-|-----------|-------|
-| Host | `localhost` |
-| HTTP Port | `8123` |
-| Native Port | `9000` |
-| Database | `datamart_badr_interactive` |
-| Username | `default` |
-| Password | *(empty)* |
-
----
-
-## 📁 Project Structure
-
-```
-requirement-badr_interactive/
-├── docker-compose.yml          # Airflow + Spark + ClickHouse + Superset
-├── Dockerfile.airflow          # Custom Airflow image
-├── requirements.txt            # Python deps
-├── .env.example                # Env template
-│
-├── dags/
-│   ├── dags_etl.py             # Airflow DAG definition
-│   └── jobs/
-│       ├── jobs_etl.py         # Main ETL script (PySpark)
-│       └── scripts/
-│           ├── helpers.py      # JDBC helpers
-│           └── methods.py      # ETL methods
-│
-├── scripts/
-│   ├── ddl/                    # ClickHouse DDL scripts
-│   │   ├── 01_create_dimensions_ch.sql
-│   │   └── 02_create_fact_table_ch.sql
-│   └── queries/                # Dashboard SQL queries
-│       ├── dashboard_queries.sql
-│       └── filter_queries.sql
-│
-└── prisma/schema.prisma        # Source DB reference
-```
-
----
-
-## 📊 Dashboard Queries
-
-### 1. Total Stock (Jumlah Stok)
+### 5.1 Query Jumlah Stok
 ```sql
-SELECT COALESCE(SUM(fs.stock_quantity), 0) AS total_stock,
-       COUNT(DISTINCT fs.material_key) AS material_count,
-       COUNT(DISTINCT fs.entity_key) AS entity_count
-FROM fact_stock fs
-WHERE fs.date_key BETWEEN :date_from AND :date_to
+SELECT COALESCE(SUM(fs.stock_quantity), 0) AS total_stock
+FROM fact_stock_snapshot fs
+LEFT JOIN dim_material dm ON fs.material_id = dm.material_id
+LEFT JOIN dim_entity de ON fs.entity_id = de.entity_id
+WHERE fs.stock_date BETWEEN :date_from AND :date_to
+  AND (:activity_id IS NULL OR fs.activity_id = :activity_id)
   AND (:material_type IS NULL OR dm.category = :material_type)
-  AND (:province_id IS NULL OR dl.province_id = :province_id);
+  AND (:material_id IS NULL OR fs.material_id = :material_id)
+  AND (
+      :tag_id IS NULL
+      OR EXISTS (
+          SELECT 1
+          FROM bridge_entity_tag bet_filter
+          WHERE bet_filter.entity_id = fs.entity_id
+            AND bet_filter.tag_id = :tag_id
+      )
+  )
+  AND (:province_id IS NULL OR de.province_id = :province_id)
+  AND (:regency_id IS NULL OR de.regency_id = :regency_id)
+  AND (:entity_type IS NULL OR de.entity_type = :entity_type)
+  AND (:information_type IS NULL OR :information_type = 'Sisa Stok');
 ```
 
-### 2. Stock by Entity Tag (Stok per Tag Entitas)
+### 5.2 Query Stok per Tag Entitas
 ```sql
-SELECT det.tag_name, det.tag_category,
-       COUNT(DISTINCT fs.entity_key) AS entity_count,
-       SUM(fs.stock_quantity) AS total_stock
-FROM fact_stock fs
-INNER JOIN dim_entity_tag det ON fs.tag_key = det.tag_key
-WHERE fs.date_key BETWEEN :date_from AND :date_to
-GROUP BY det.tag_key, det.tag_name, det.tag_category
-ORDER BY total_stock DESC;
+SELECT
+    det.tag_id,
+    det.tag_name,
+    COUNT(DISTINCT fs.entity_id) AS entity_count,
+    SUM(fs.stock_quantity) AS total_stock
+FROM fact_stock_snapshot fs
+JOIN bridge_entity_tag bet ON fs.entity_id = bet.entity_id
+JOIN dim_entity_tag det ON bet.tag_id = det.tag_id
+LEFT JOIN dim_material dm ON fs.material_id = dm.material_id
+LEFT JOIN dim_entity de ON fs.entity_id = de.entity_id
+WHERE fs.stock_date BETWEEN :date_from AND :date_to
+  AND (:activity_id IS NULL OR fs.activity_id = :activity_id)
+  AND (:material_type IS NULL OR dm.category = :material_type)
+  AND (:material_id IS NULL OR fs.material_id = :material_id)
+  AND (:tag_id IS NULL OR bet.tag_id = :tag_id)
+  AND (:province_id IS NULL OR de.province_id = :province_id)
+  AND (:regency_id IS NULL OR de.regency_id = :regency_id)
+  AND (:entity_type IS NULL OR de.entity_type = :entity_type)
+GROUP BY det.tag_id, det.tag_name
+ORDER BY total_stock DESC, det.tag_name;
 ```
 
-### 3. Stock by Material (Stok per Material)
+### 5.3 Query Stok per Material
 ```sql
-SELECT dm.material_name, dm.category, dm.is_vaccine,
-       COUNT(DISTINCT fs.entity_key) AS entity_count,
-       SUM(fs.stock_quantity) AS total_stock
-FROM fact_stock fs
-INNER JOIN dim_material dm ON fs.material_key = dm.material_key
-WHERE fs.date_key BETWEEN :date_from AND :date_to
-GROUP BY dm.material_key, dm.material_name, dm.category, dm.is_vaccine
-ORDER BY total_stock DESC;
+SELECT
+    dm.material_id,
+    dm.material_name,
+    dm.category,
+    dm.is_vaccine,
+    COUNT(DISTINCT fs.entity_id) AS entity_count,
+    SUM(fs.stock_quantity) AS total_stock
+FROM fact_stock_snapshot fs
+JOIN dim_material dm ON fs.material_id = dm.material_id
+LEFT JOIN dim_entity de ON fs.entity_id = de.entity_id
+WHERE fs.stock_date BETWEEN :date_from AND :date_to
+  AND (:activity_id IS NULL OR fs.activity_id = :activity_id)
+  AND (:material_type IS NULL OR dm.category = :material_type)
+  AND (:material_id IS NULL OR fs.material_id = :material_id)
+  AND (
+      :tag_id IS NULL
+      OR EXISTS (
+          SELECT 1
+          FROM bridge_entity_tag bet_filter
+          WHERE bet_filter.entity_id = fs.entity_id
+            AND bet_filter.tag_id = :tag_id
+      )
+  )
+  AND (:province_id IS NULL OR de.province_id = :province_id)
+  AND (:regency_id IS NULL OR de.regency_id = :regency_id)
+  AND (:entity_type IS NULL OR de.entity_type = :entity_type)
+GROUP BY dm.material_id, dm.material_name, dm.category, dm.is_vaccine
+ORDER BY total_stock DESC, dm.material_name;
 ```
 
-### 4. Stock Trend Over Time
+### 5.4 Query Filter
 ```sql
-SELECT dd.full_date, dd.year, dd.month,
-       SUM(fs.stock_quantity) AS total_stock
-FROM fact_stock fs
-INNER JOIN dim_date dd ON fs.date_key = dd.date_key
-WHERE dd.full_date >= today() - toIntervalDay(90)
-GROUP BY dd.full_date, dd.year, dd.month
-ORDER BY dd.full_date ASC;
-```
-
-### 5. Vaccine vs Non-Vaccine
-```sql
-SELECT dm.category, SUM(fs.stock_quantity) AS total_stock
-FROM fact_stock fs
-INNER JOIN dim_material dm ON fs.material_key = dm.material_key
-GROUP BY dm.category ORDER BY total_stock DESC;
-```
-
-### Filter Queries
-```sql
--- Materials dropdown
-SELECT DISTINCT material_key, material_name, category FROM dim_material ORDER BY material_name;
-
--- Entity tags dropdown
-SELECT DISTINCT tag_key, tag_name, tag_category FROM dim_entity_tag ORDER BY tag_name;
-
--- Provinces dropdown
+SELECT material_id, material_name, category, is_vaccine FROM dim_material ORDER BY material_name;
+SELECT activity_id, activity_name FROM dim_activity ORDER BY activity_name;
+SELECT tag_id, tag_name FROM dim_entity_tag ORDER BY tag_name;
 SELECT DISTINCT province_id, province_name FROM dim_location ORDER BY province_name;
-
--- Regencies dropdown (filtered by province)
-SELECT DISTINCT regency_id, regency_name FROM dim_location 
-WHERE province_id = :province_id ORDER BY regency_name;
+SELECT DISTINCT regency_id, regency_name FROM dim_location WHERE province_id = :province_id ORDER BY regency_name;
+SELECT DISTINCT entity_type FROM dim_entity ORDER BY entity_type;
 ```
 
----
-
-## 📊 Dashboard Charts (Superset)
-
-### Chart 1: Total Stock (Big Number)
-- **Type:** Big Number
-- **Metric:** `SUM(stock_quantity)`
-- **Title:** "Jumlah Stok"
-
-### Chart 2: Stock by Entity Tag (Bar Chart)
-- **Type:** Bar Chart
-- **Query:** Stock by Entity Tag (above)
-- **X:** tag_name, **Y:** total_stock
-
-### Chart 3: Stock by Material (Horizontal Bar)
-- **Type:** Horizontal Bar Chart
-- **Query:** Stock by Material (above)
-- **X:** total_stock, **Y:** material_name
-- **Group By:** category
-
-### Chart 4: Stock Trend (Line Chart)
-- **Type:** Line Chart
-- **Query:** Stock Trend Over Time (above)
-- **X:** full_date, **Y:** total_stock
-
-### Chart 5: Vaccine vs Non-Vaccine (Pie)
-- **Type:** Pie Chart
-- **Query:** Vaccine vs Non-Vaccine (above)
-- **Group By:** category, **Metric:** total_stock
-
-### Dashboard Layout
-```
-┌─────────────────────────────────────────────────────────┐
-│  [Filter Bar]                                           │
-│  Date Range | Province | Material Type | Entity Tag    │
-└─────────────────────────────────────────────────────────┘
-
-┌──────────────────┐ ┌──────────────────┐ ┌──────────────────┐
-│  Jumlah Stok     │ │  Vaccine vs      │ │  Active Entities │
-│  (Big Number)    │ │  Non-Vaccine     │ │  (Big Number)    │
-└──────────────────┘ └──────────────────┘ └──────────────────┘
-
-┌──────────────────────────────────────────────────────────┐
-│  Stok per Tag Entitas (Bar Chart)                        │
-└──────────────────────────────────────────────────────────┘
-
-┌─────────────────────────────────────┐ ┌──────────────────┐
-│  Stok per Material (Bar Chart)      │ │  Top 10 Entities │
-│                                     │ │  (Table)         │
-└─────────────────────────────────────┘ └──────────────────┘
-
-┌──────────────────────────────────────────────────────────┐
-│  Stock Trend Over Time (Line Chart)                      │
-└──────────────────────────────────────────────────────────┘
-```
-
----
-
-## 🐛 Troubleshooting
-
-### Airflow not starting
-```bash
-docker logs airflow-init
-docker compose down -v
-docker compose up -d
-```
-
-### ClickHouse connection refused
-```bash
-docker logs clickhouse-badr
-# Wait for: "Ready for connections"
-curl http://localhost:8123/ping  # Should return: Ok.
-```
-
-### Out of Memory
-```bash
-docker stats
-docker compose stop spark-master  # Stop Spark if needed
-```
-
----
-
-## 📈 Performance
-
-| Metric | MySQL | ClickHouse | Improvement |
-|--------|-------|------------|-------------|
-| 1M rows aggregation | 2-5s | 0.1-0.3s | **15-20x faster** |
-| 10M rows full scan | 10-30s | 0.5-2s | **15x faster** |
-| Storage | 100% | 10-20% | **80-90% smaller** |
-
----
-
-## 🔒 Security
-- ✅ Never commit `.env`
-- ✅ VPN required for source DB
-- ✅ Use read-only access for source
-- ✅ Data mart isolated from production
-
----
-
-## ✅ Checklist
-
-- [ ] VPN connected
-- [ ] Docker Desktop running
-- [ ] `.env` configured
-- [ ] `docker compose up -d` executed
-- [ ] All services healthy
-- [ ] Dockerfile.airflow built
-- [ ] Directories created (airflow/, spark/)
-- [ ] Data mart initialized (DDL scripts)
-- [ ] ETL triggered via Airflow
-- [ ] Data visible in ClickHouse
-- [ ] Superset dashboard created
-
----
-
-**Last Updated:** April 7, 2026  
-**Status:** ✅ Ready - Airflow + Spark + ClickHouse + Superset
+## Penutup
+Rancangan ini disusun agar dapat langsung dipresentasikan pada tahap interview sebagai solusi data engineering yang terstruktur, formal, dan sesuai kebutuhan dashboard stok logistik.
